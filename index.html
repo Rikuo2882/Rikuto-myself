@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>配当ポートフォリオ管理</title>
+<title>高配当ポートフォリオ管理</title>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   :root{--bg:#fff;--bg2:#f5f5f3;--bg-info:#e6f1fb;--bg-green:#e1f5ee;--text:#1a1a18;--text2:#5f5e5a;--text3:#888780;--text-info:#185fa5;--text-green:#085041;--border:rgba(0,0,0,.11);--green:#0f6e56;--red:#a32d2d;--blue:#185fa5;--r:10px;--rl:14px}
@@ -85,7 +85,7 @@
 </head>
 <body>
 <header class="header"><div class="header-inner">
-  <div><div class="app-title">配当ポートフォリオ</div><div class="app-sub">取得ベース配当利回り（YoC）＋ 配当込み実質損益</div></div>
+  <div><div class="app-title">高配当ポートフォリオ</div><div class="app-sub">取得ベース配当利回り（YoC）＋ 配当込み実質損益</div></div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <div style="font-size:11px;color:var(--text3)" id="updated-date"></div>
     <button class="update-btn" id="update-btn" onclick="updatePrices()"><span class="dot" id="status-dot"></span><span id="update-label">株価を更新</span></button>
@@ -111,7 +111,7 @@
 // 株価・投資信託の自動取得を使えるようになります ★★★
 // 例: const DEFAULT_GAS_URL='https://script.google.com/macros/s/xxxx/exec';
 // ════════════════════════════════════════════════════════════
-const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbzTckNexzgZ4dHH0RyNNtCvgQxPmT1ztcCXuO3g6DY5qny8HCTD72rOI8JIBDbCn8X7/exec';
+const DEFAULT_GAS_URL='';
 
 const SK='dp-stocks-v4',HK='dp-hist-v2',PK='dp-proxy-url',RK='dp-usdjpy';
 const COLORS=['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1','#14b8a6','#e11d48'];
@@ -222,7 +222,7 @@ function calcStock(s){
 function toJPY(n,cur){return cur==='USD'?n*getRate():n}
 function nextExDate(ex){if(!ex||!ex.length)return null;const yr=today.getFullYear();return ex.map(d=>{const[m,day]=d.split('-').map(Number);let dt=new Date(yr,m-1,day);if(dt<=today)dt=new Date(yr+1,m-1,day);return dt}).sort((a,b)=>a-b)[0]}
 
-// ── データ取得（プロキシ経由でYahoo Finance / 投信協会） ──
+// ── データ取得（プロキシ経由でYahoo Finance） ──
 function getProxyUrl(){return localStorage.getItem(PK)||DEFAULT_GAS_URL||''}
 
 async function fetchViaProxies(url){
@@ -278,65 +278,11 @@ async function fetchStockData(s){
   }catch(e){return{price:null,dividend:null,currency:null}}
 }
 
-// 投資信託（GAS → 投信協会CSV → Yahoo!ファイナンスの順に試行）
-async function fetchFundData(code){
-  // ⓪ GAS中継（設定されていれば最優先・最も確実）
-  const gas=getProxyUrl();
-  if(gas){
-    try{
-      const res=await fetch(gas+'?ticker='+encodeURIComponent(code)+'&type=fund',{signal:AbortSignal.timeout(15000)});
-      const d=await res.json();
-      if(d.price&&d.price>0)return{price:d.price,dividend:d.dividend||null,exDates:d.exDates||null};
-    }catch(e){}
-  }
-  // ① 投信協会CSV（パラメータ2パターン試行）
-  const csvUrls=[
-    `https://toushin-lib.fwg.ne.jp/FdsWeb/FDST030000/csv-file-download?isinCd=&associFundCd=${encodeURIComponent(code)}`,
-    `https://toushin-lib.fwg.ne.jp/FdsWeb/FDST030000/csv-file-download?associFundCd=${encodeURIComponent(code)}`
-  ];
-  for(const u of csvUrls){
-    const res=await fetchViaProxies(u);
-    if(!res)continue;
-    try{
-      const text=await res.text();
-      const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&l.includes(','));
-      if(lines.length<2)continue;
-      const last=lines[lines.length-1].split(',');
-      const price=parseFloat((last[1]||'').replace(/[^0-9.]/g,''));
-      let dividend=0;const exSet=new Set();
-      const oneYearAgo=new Date();oneYearAgo.setFullYear(oneYearAgo.getFullYear()-1);
-      for(const line of lines.slice(1)){
-        const cols=line.split(',');
-        const dm=cols[0].match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
-        if(!dm)continue;
-        const dt=new Date(+dm[1],+dm[2]-1,+dm[3]);
-        const div=parseFloat((cols[3]||'').replace(/[^0-9.]/g,''));
-        if(dt>=oneYearAgo&&div>0){dividend+=div;exSet.add(String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'))}
-      }
-      if(price&&price>0){
-        const ex=[...exSet].sort();
-        return{price,dividend:dividend>0?Math.round(dividend*10)/10:null,exDates:ex.length?ex:null};
-      }
-    }catch(e){}
-  }
-  // ② Yahoo!ファイナンス（日本）のファンドページから基準価額を抽出
-  try{
-    const res=await fetchViaProxies(`https://finance.yahoo.co.jp/quote/${encodeURIComponent(code)}`);
-    if(res){
-      const html=await res.text();
-      let m=html.match(/"price"\s*:\s*"?([0-9][0-9,]*\.?[0-9]*)/);
-      if(!m)m=html.match(/基準価額[\s\S]{0,300}?([0-9][0-9,]{3,})/);
-      if(m){const p=parseFloat(m[1].replace(/,/g,''));if(p>0)return{price:p,dividend:null,exDates:null}}
-    }
-  }catch(e){}
-  return{price:null,dividend:null,exDates:null};
-}
-
 async function updatePrices(){
   const btn=document.getElementById('update-btn'),dot=document.getElementById('status-dot');
   btn.classList.add('loading');dot.classList.add('pulsing');
   document.getElementById('update-label').textContent='取得中...';
-  showToast('株価・基準価額・為替を取得中...（少し時間がかかります）');
+  showToast('株価・為替を取得中...（少し時間がかかります）');
   // 為替レート取得
   try{
     const res=await fetchViaProxies('https://query1.finance.yahoo.com/v8/finance/chart/USDJPY=X?interval=1d&range=1d');
@@ -344,9 +290,7 @@ async function updatePrices(){
   }catch(e){}
   let ok=0,ng=0;
   for(const s of stocks){
-    let data;
-    if(s.isFund){data=await fetchFundData(s.ticker)}
-    else{data=await fetchStockData(s)}
+    const data=await fetchStockData(s);
     // 通貨がJPY→USDに切り替わった場合、円で入力済みの取得単価・配当をドルに自動換算
     if(data.currency==='USD'&&curOf(s)!=='USD'){
       const r=getRate();
@@ -355,7 +299,7 @@ async function updatePrices(){
       s.currency='USD';
     }
     if(data.price){
-      s.currentPrice=curOf(s)==='USD'||s.isFund?Math.round(data.price*100)/100:Math.round(data.price);
+      s.currentPrice=curOf(s)==='USD'?Math.round(data.price*100)/100:Math.round(data.price);
       s.priceUpdated=true;ok++;
     }else{s.priceUpdated=false;ng++}
     if(data.dividend&&data.dividend>0)s.annualDividend=data.dividend;
@@ -435,20 +379,20 @@ function renderHoldings(){
         <td colspan="3" style="text-align:center;font-size:11px;color:var(--text3)">保存後に再計算</td>
         <td><input class="edit-input" id="e-buy" type="number" step="0.01" value="${s.buyPrice}" min="0"></td>
         <td><input class="edit-input" id="e-curprice" type="number" step="0.01" value="${s.currentPrice}" min="0"></td>
-        <td colspan="2"><select class="edit-input" id="e-account" style="text-align:left">${['特定口座','NISA','旧NISA','一般口座'].map(a=>`<option value="${a}"${(s.account||'特定口座')===a?' selected':''}>${a}</option>`).join('')}</select></td>
+        <td colspan="2"><select class="edit-input" id="e-account" style="text-align:left">${['特定口座','NISA','一般口座'].map(a=>`<option value="${a}"${(s.account||'特定口座')===a?' selected':''}>${a}</option>`).join('')}</select></td>
         <td><input class="edit-input" id="e-div" type="number" step="0.01" value="${s.annualDividend}" min="0"></td>
         <td colspan="2"><input class="edit-input" id="e-exdates" style="text-align:left" value="${(s.exDates||[]).join(',')}" placeholder="03-31,09-30"></td>
         <td><div style="display:flex;gap:4px;justify-content:flex-end"><button class="save-btn" onclick="saveEdit(${s.id})">保存</button><button class="cancel-btn" onclick="cancelEdit()">×</button></div></td>
       </tr>`;
     }
     return`<tr>
-      <td style="min-width:130px;padding-left:1rem"><div class="tm">${s.ticker}${s.isFund?' <span class="tag-yoc">投信</span>':''}${c.cur==='USD'?' <span class="tag-yoc">$</span>':''}</div><div class="ts">${s.name}${s.account?` <span class="badge badge-upcoming" style="font-size:9px">${s.account}</span>`:''}</div></td>
-      <td>${s.shares.toLocaleString()}<div class="ts">${s.isFund?'万口':'株'}</div></td>
+      <td style="min-width:130px;padding-left:1rem"><div class="tm">${s.ticker}${c.cur==='USD'?' <span class="tag-yoc">$</span>':''}</div><div class="ts">${s.name}${s.account?` <span class="badge badge-upcoming" style="font-size:9px">${s.account}</span>`:''}</div></td>
+      <td>${s.shares.toLocaleString()}<div class="ts">株</div></td>
       <td>${m(c.mv)}<div class="ts">時価</div></td>
       <td>${c.curYield.toFixed(2)}%<div class="ts">現在利回り</div></td>
       <td style="font-weight:500;color:var(--text-info)">${c.yocPct.toFixed(2)}%<div class="ts">YoC</div></td>
       <td>${m(s.buyPrice)}<div class="ts">取得単価</div></td>
-      <td>${m(s.currentPrice)}${pt}<div class="ts">${s.isFund?'現在値(基準価額)':'現在株価'}</div></td>
+      <td>${m(s.currentPrice)}${pt}<div class="ts">現在株価</div></td>
       <td style="color:var(--text-info)">${m(c.rcv)}<div class="ts">受取累計</div></td>
       <td><span class="${c.totalPct>=0?'pos':'neg'}" style="font-weight:500">${fmtPct(c.totalPct)}</span><div class="ts">${m(c.totalGain)}</div></td>
       <td>${m(s.annualDividend)}<div class="ts">1株配当</div></td>
@@ -465,7 +409,7 @@ function renderHoldings(){
 
   el.innerHTML=`
     <div class="yoc-box"><strong>YoC（Yield on Cost）とは？</strong>買値ベースの配当利回り。<strong>現在利回り</strong>は今の株価ベース。株価が上がるほどYoC＞現在利回りになります。</div>
-    <div class="info-box"><strong>自動取得について</strong>：「株価を更新」ボタンで、日本株・米国株・投資信託すべての価格・配当（分配金）・権利落ち日が自動取得されます。設定は不要です。米国株はドル表示（サマリー合計のみ円換算）。権利落ち日は過去1年の実績に基づく予測です。</div>
+    <div class="info-box"><strong>自動取得について</strong>：「株価を更新」ボタンで、日本株・米国株の株価・配当・権利落ち日が自動取得されます。設定は不要です。米国株はドル表示（サマリー合計のみ円換算）。権利落ち日は過去1年の実績に基づく予測です。</div>
     <div class="card" style="padding:0"><div class="table-wrap"><table><thead><tr>
       <th style="padding-left:1rem;min-width:130px">銘柄</th><th>株数</th><th>時価</th><th>現在利回り</th><th>YoC</th><th>取得単価</th><th>現在株価</th><th>受取配当累計</th><th>配当込み損益 ★</th><th>1株配当</th><th>年間配当</th><th>次回権利日</th><th style="text-align:right;padding-right:.6rem">操作</th>
     </tr></thead><tbody>${rows}</tbody></table></div></div>
@@ -590,26 +534,22 @@ function deleteHistory(id){if(!confirm('削除してよいですか？'))return;
 
 function renderAdd(){
   const el=document.getElementById('pane-add');
-  const list=stocks.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:.5px solid var(--border)"><div><span style="font-weight:500">${s.ticker}</span><span style="color:var(--text2);font-size:13px;margin-left:8px">${s.name}</span><span style="color:var(--text3);font-size:12px;margin-left:8px">${s.shares}${s.isFund?'万口':'株'}</span></div><button class="del-btn" onclick="deleteStock(${s.id})">× 削除</button></div>`).join('')||'<div style="font-size:13px;color:var(--text3);padding:.75rem 0">まだ銘柄がありません</div>';
+  const list=stocks.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:.5px solid var(--border)"><div><span style="font-weight:500">${s.ticker}</span><span style="color:var(--text2);font-size:13px;margin-left:8px">${s.name}</span><span style="color:var(--text3);font-size:12px;margin-left:8px">${s.shares}株</span></div><button class="del-btn" onclick="deleteStock(${s.id})">× 削除</button></div>`).join('')||'<div style="font-size:13px;color:var(--text3);padding:.75rem 0">まだ銘柄がありません</div>';
   el.innerHTML=`
     <div class="card"><div class="sl">新規銘柄を追加</div>
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">種類</label><select id="f-type"><option value="jp">日本株</option><option value="us">米国株</option><option value="fund">投資信託</option></select></div>
-        <div class="form-group"><label class="form-label">口座区分</label><select id="f-account"><option value="特定口座">特定口座</option><option value="NISA">NISA</option><option value="旧NISA">旧NISA</option><option value="一般口座">一般口座</option></select></div>
-        <div class="form-group"><label class="form-label">コード *</label><input id="f-ticker" placeholder="日本株:8306 / 米国株:AAPL / 投信:協会コード"></div>
+        <div class="form-group"><label class="form-label">種類</label><select id="f-type"><option value="jp">日本株</option><option value="us">米国株</option></select></div>
+        <div class="form-group"><label class="form-label">口座区分</label><select id="f-account"><option value="特定口座">特定口座</option><option value="NISA">NISA</option><option value="一般口座">一般口座</option></select></div>
+        <div class="form-group"><label class="form-label">コード *</label><input id="f-ticker" placeholder="日本株:8306 / 米国株:AAPL"></div>
         <div class="form-group" style="grid-column:span 2"><label class="form-label">銘柄名 *</label><input id="f-name" placeholder="例: 三菱UFJ FG"></div>
-        <div class="form-group"><label class="form-label">保有数（投信は万口）*</label><input id="f-shares" type="number" step="0.0001" placeholder="例: 100" min="0.0001"></div>
+        <div class="form-group"><label class="form-label">保有株数 *</label><input id="f-shares" type="number" step="1" placeholder="例: 100" min="1"></div>
         <div class="form-group"><label class="form-label">取得単価 *</label><input id="f-buy" type="number" step="0.01" placeholder="日本株:円 / 米国株:ドル" min="0"></div>
-        <div class="form-group"><label class="form-label">現在値（株価/基準価額）*</label><input id="f-current" type="number" step="0.01" placeholder="更新ボタンで自動取得可" min="0"></div>
-        <div class="form-group"><label class="form-label">1株配当/分配金（年間）</label><input id="f-div" type="number" step="0.01" placeholder="更新ボタンで自動取得可" min="0"></div>
+        <div class="form-group"><label class="form-label">現在株価 *</label><input id="f-current" type="number" step="0.01" placeholder="更新ボタンで自動取得可" min="0"></div>
+        <div class="form-group"><label class="form-label">1株配当（年間）</label><input id="f-div" type="number" step="0.01" placeholder="更新ボタンで自動取得可" min="0"></div>
         <div class="form-group" style="grid-column:span 2"><label class="form-label">権利落ち日（MM-DD、カンマ区切り）</label><input id="f-exdates" placeholder="例: 03-31,09-30"></div>
       </div>
       <button class="btn-primary" onclick="addStock()">追加する</button>
       <div class="info-box" style="margin-top:1rem;margin-bottom:0">
-        <strong>投資信託の協会コードの調べ方</strong>：投資信託協会のサイト（toushin-lib.fwg.ne.jp）や、目論見書・証券会社の商品ページに記載されている8桁の英数字です。「ファンド名 協会コード」で検索してもすぐ見つかります。<br><br>
-        <strong>代表的な協会コードの例</strong>：<br>
-        ・eMAXIS Slim 全世界株式（オール・カントリー）→ <strong>0331418A</strong><br>
-        ・eMAXIS Slim 米国株式（S&P500）→ <strong>03311187</strong><br><br>
         <strong>米国株</strong>：ティッカー（AAPL等）で追加。取得単価もドルで入力してください。表示はすべてドル建て、サマリー合計のみ円換算されます。
       </div>
     </div>
@@ -623,7 +563,7 @@ function addStock(){
   const exRaw=document.getElementById('f-exdates').value.trim(),exDates=exRaw?exRaw.split(',').map(d=>d.trim()).filter(Boolean):[];
   if(!ticker||!name||!shares||!buyPrice||!curPrice){alert('必須項目を入力してください（現在株価は仮の値でもOK。更新ボタンで自動取得されます）');return}
   const account=document.getElementById('f-account').value;
-  const stock={id:Date.now(),ticker,name,shares,buyPrice,currentPrice:curPrice,annualDividend:annDiv,exDates,isFund:type==='fund',account};
+  const stock={id:Date.now(),ticker,name,shares,buyPrice,currentPrice:curPrice,annualDividend:annDiv,exDates,account};
   if(type==='us')stock.currency='USD';
   stocks.push(stock);
   save(SK,stocks);renderAll();showToast(`${name} を追加しました`);
@@ -642,11 +582,10 @@ function renderSettings(){
   el.innerHTML=`
     <div class="card"><div class="sl">株価・配当の自動取得について</div>
       <div class="info-box">
-        <strong>設定は不要です。</strong>「株価を更新」ボタンを押すだけで、無料の中継サービスを経由してYahoo Financeと投資信託協会からデータを自動取得します。<br><br>
+        <strong>設定は不要です。</strong>「株価を更新」ボタンを押すだけで、無料の中継サービスを経由してYahoo Financeからデータを自動取得します。<br><br>
         対応範囲：<br>
-        ・日本株：株価＋年間配当（証券コードで自動取得）<br>
-        ・米国株：株価＋年間配当（ティッカーで自動取得・ドル建て）<br>
-        ・投資信託：基準価額＋年間分配金（協会コードで自動取得）<br>
+        ・日本株：株価＋年間配当＋権利落ち日（証券コードで自動取得）<br>
+        ・米国株：株価＋年間配当＋権利落ち日（ティッカーで自動取得・ドル建て）<br>
         ・為替レート（ドル円）：自動取得<br><br>
         <strong>注意</strong>：無料の中継サービスを使うため、混雑時は取得に失敗することがあります。その場合は時間をおいて再度お試しください。
       </div>
@@ -658,90 +597,61 @@ function renderSettings(){
       <button class="btn-primary" onclick="saveRate()">レートを保存</button>
       <p class="footnote" style="margin-top:.6rem">「株価を更新」で最新レートに自動更新されます。手動で上書きも可能です。</p>
     </div>
-    <div class="card"><div class="sl">Google Apps Script中継の設定（管理者向け・推奨）</div>
+    <div class="card"><div class="sl">Google Apps Script中継の設定（任意・予備手段）</div>
       <div class="info-box">
-        <strong>投資信託の自動取得にはこの設定が必要です。</strong>無料の中継サービスでは投信協会のデータが取得できないため、Google Apps Script（GAS）を中継として使います。<br><br>
-        <strong>ポイント</strong>：アプリの管理者（あなた）が1回設定してURLをファイルに埋め込めば、<strong>友人は何も設定せずに全機能が使えます。</strong><br><br>
+        通常は設定不要です。無料の中継サービスが不調で株価取得が失敗し続ける場合の予備手段として、Google Apps Script（GAS）中継を設定できます。<br><br>
+        <strong>ポイント</strong>：アプリの管理者が1回設定してURLをファイル上部の <strong>DEFAULT_GAS_URL</strong> に埋め込めば、友人は何も設定せずに安定した自動取得を使えます。<br><br>
         <strong>設定手順（5分・無料）</strong><br>
-        ① Googleにログインした状態で <strong>script.google.com</strong> にアクセス<br>
-        ② 「新しいプロジェクト」→ 最初のコードを全部消して下のコードを貼り付け<br>
-        ③ 「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」<br>
-        ④ 「アクセスできるユーザー」を「<strong>全員</strong>」に変更 →「デプロイ」<br>
-        ⑤ 警告画面は「Advanced（詳細）」→「移動」→「許可」で進む（自作コードなので安全です）<br>
-        ⑥ 発行されたURLを、index.htmlの上部にある <strong>DEFAULT_GAS_URL=''</strong> の''の中に貼り付けてGitHubに再アップロード<br>
-        ⑦ （自分だけ先に試す場合は下の入力欄に貼って「保存」でもOK）
+        ① script.google.com →「新しいプロジェクト」→ 下のコードを貼り付け<br>
+        ② 「デプロイ」→「新しいデプロイ」→ ウェブアプリ → アクセス「全員」→ デプロイ<br>
+        ③ 警告画面は「Advanced（詳細）」→「移動」→「許可」で進む<br>
+        ④ 発行されたURLを、index.html上部の <strong>DEFAULT_GAS_URL=''</strong> の''内に貼り付けて再アップロード<br>
+        ※コード更新後は「デプロイを管理」→ 編集 →「新バージョン」→ デプロイ で反映されます
       </div>
       <div class="card" style="background:var(--bg2);border:1px dashed var(--border)">
-        <div class="sl">Google Apps Scriptに貼り付けるコード（株式＋投資信託対応版）</div>
+        <div class="sl">Google Apps Scriptに貼り付けるコード</div>
         <pre style="font-size:11px;line-height:1.6;color:var(--text);overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-family:monospace">function doGet(e) {
   var ticker = e.parameter.ticker || '8306.T';
-  var type = e.parameter.type || 'stock';
-
-  if (type === 'fund') {
-    // 投資信託：投信協会のCSVから基準価額・分配金・決算日を取得
-    var url = 'https://toushin-lib.fwg.ne.jp/FdsWeb/FDST030000/csv-file-download?isinCd=&associFundCd=' + ticker;
-    var res = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
-    var text = res.getContentText('Shift_JIS');
-    var lines = text.split(/\\r?\\n/).filter(function(l){ return l && l.indexOf(',') > -1; });
-    var price = null, dividend = 0, exDates = [];
-    if (lines.length >= 2) {
-      var last = lines[lines.length - 1].split(',');
-      price = parseFloat(String(last[1]).replace(/[^0-9.]/g, ''));
-      var now = new Date();
-      var yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-      for (var i = 1; i < lines.length; i++) {
-        var cols = lines[i].split(',');
-        var m = String(cols[0]).match(/(\\d{4})\\D+(\\d{1,2})\\D+(\\d{1,2})/);
-        if (!m) continue;
-        var dt = new Date(+m[1], +m[2] - 1, +m[3]);
-        var dv = parseFloat(String(cols[3]).replace(/[^0-9.]/g, ''));
-        if (dt >= yearAgo && dv > 0) {
-          dividend += dv;
-          var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
-          var dd = ('0' + dt.getDate()).slice(-2);
-          if (exDates.indexOf(mm + '-' + dd) < 0) exDates.push(mm + '-' + dd);
-        }
-      }
-    }
-    return ContentService.createTextOutput(JSON.stringify({
-      ticker: ticker, price: price,
-      dividend: dividend > 0 ? Math.round(dividend * 10) / 10 : null,
-      exDates: exDates.length ? exDates.sort() : null
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  // 株式（日本株・米国株）：Yahoo Financeから取得
-  var url2 = 'https://query1.finance.yahoo.com/v8/finance/chart/' + ticker + '?interval=1d&range=1y&events=div';
-  var res2 = UrlFetchApp.fetch(url2, {muteHttpExceptions: true});
-  var json = JSON.parse(res2.getContentText());
+  var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + ticker + '?interval=1d&range=1y&events=div';
+  var res = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
+  var json = JSON.parse(res.getContentText());
   var result = json.chart.result[0];
-  var price2 = result.meta.regularMarketPrice;
-  var dividend2 = 0, exDates2 = [];
+  var price = result.meta.regularMarketPrice;
+  var dividend = 0, exDates = [];
   try {
     if (result.events && result.events.dividends) {
       var oneYearAgo = Date.now() / 1000 - 365 * 86400;
       var divs = Object.keys(result.events.dividends).map(function(k){ return result.events.dividends[k]; });
       for (var j = 0; j < divs.length; j++) {
         if (divs[j].date >= oneYearAgo) {
-          dividend2 += divs[j].amount;
-          var d2 = new Date(divs[j].date * 1000);
-          var mm2 = ('0' + (d2.getMonth() + 1)).slice(-2);
-          var dd2 = ('0' + d2.getDate()).slice(-2);
-          if (exDates2.indexOf(mm2 + '-' + dd2) < 0) exDates2.push(mm2 + '-' + dd2);
+          dividend += divs[j].amount;
+          var d = new Date(divs[j].date * 1000);
+          var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+          var dd = ('0' + d.getDate()).slice(-2);
+          if (exDates.indexOf(mm + '-' + dd) < 0) exDates.push(mm + '-' + dd);
         }
       }
     }
   } catch (err) {}
   return ContentService.createTextOutput(JSON.stringify({
-    ticker: ticker, price: price2,
-    dividend: dividend2 > 0 ? Math.round(dividend2 * 100) / 100 : null,
-    exDates: exDates2.length ? exDates2.sort() : null
+    ticker: ticker, price: price,
+    dividend: dividend > 0 ? Math.round(dividend * 100) / 100 : null,
+    exDates: exDates.length ? exDates.sort() : null
   })).setMimeType(ContentService.MimeType.JSON);
 }</pre>
       </div>
       <div class="form-grid" style="margin-top:1rem"><div class="form-group" style="grid-column:span 3"><label class="form-label">Google Apps ScriptのURL（自分の端末だけで使う場合）</label><input id="proxy-url" placeholder="https://script.google.com/macros/s/xxxxxx/exec" value="${cp}"></div></div>
       <button class="btn-primary" onclick="saveProxy()">URLを保存</button>
       ${cp?'<p class="footnote" style="margin-top:.6rem;color:var(--green)">✓ 設定済み（優先使用されます）</p>':''}
+    </div>
+    <div class="card"><div class="sl">データのバックアップ・復元</div>
+      <div class="info-box">データはブラウザ内にのみ保存されるため、<strong>ブラウザの履歴削除やPCの買い替えで消える可能性があります。</strong>定期的にバックアップファイルを保存しておくと安心です。別の端末（スマホ⇔PC）へのデータ移行にも使えます。</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn-primary" style="flex:1;min-width:180px" onclick="exportData()">⬇ バックアップを保存</button>
+        <button class="btn-primary" style="flex:1;min-width:180px;background:var(--bg);color:var(--text);border:.5px solid var(--border)" onclick="document.getElementById('import-file').click()">⬆ バックアップから復元</button>
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+      </div>
+      <p class="footnote" style="margin-top:.6rem">保存されるもの：保有銘柄・配当受取履歴・為替レート設定。ファイル名は日付入りで自動生成されます。</p>
     </div>
     <div class="card"><div class="sl">データのリセット</div>
       <p style="font-size:12px;color:var(--text2);margin-bottom:.75rem">すべてのデータをデモ状態（メガバンク3社）に戻します。元に戻せません。</p>
@@ -760,7 +670,7 @@ function exportData(){
   const a=document.createElement('a');
   const d=new Date();
   a.href=url;
-  a.download=`配当ポートフォリオ_バックアップ_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+  a.download=`高配当ポートフォリオ_バックアップ_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast('✓ バックアップファイルを保存しました');
