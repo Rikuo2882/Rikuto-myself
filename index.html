@@ -188,6 +188,9 @@ function fmtMoney(n,cur){
   if(cur==='USD')return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   return '¥'+Math.round(n).toLocaleString('ja-JP');
 }
+// セキュリティ：ユーザー入力を画面に表示する際のHTMLエスケープ（XSS対策）
+function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+
 const fmtYen=n=>'¥'+Math.round(n).toLocaleString('ja-JP');
 const fmtPct=n=>(n>=0?'+':'')+n.toFixed(2)+'%';
 const fmtDate=d=>d?`${d.getMonth()+1}月${d.getDate()}日`:'—';
@@ -330,7 +333,7 @@ function pieChart(data,size=180){
 }
 function pieLegend(data){
   const total=data.reduce((a,d)=>a+d.value,0);if(!total)return'';
-  return data.map((d,i)=>`<div class="pie-legend-item"><div class="pie-legend-left"><div class="pie-legend-dot" style="background:${COLORS[i%COLORS.length]}"></div><span>${d.label}</span></div><span style="font-weight:500">${(d.value/total*100).toFixed(1)}%（${fmtYen(d.value)}）</span></div>`).join('');
+  return data.map((d,i)=>`<div class="pie-legend-item"><div class="pie-legend-left"><div class="pie-legend-dot" style="background:${COLORS[i%COLORS.length]}"></div><span>${esc(d.label)}</span></div><span style="font-weight:500">${(d.value/total*100).toFixed(1)}%（${fmtYen(d.value)}）</span></div>`).join('');
 }
 
 const TABS=['holdings','calendar','analysis','history','add','settings'];
@@ -374,19 +377,19 @@ function renderHoldings(){
     const m=n=>fmtMoney(n,c.cur);
     if(editingId===s.id){
       return`<tr class="editing" id="edit-row-${s.id}">
-        <td style="min-width:130px;padding-left:1rem"><div class="tm">${s.ticker}</div><input class="edit-input" style="text-align:left;margin-top:4px" id="e-name" value="${s.name}"></td>
+        <td style="min-width:130px;padding-left:1rem"><div class="tm">${esc(s.ticker)}</div><input class="edit-input" style="text-align:left;margin-top:4px" id="e-name" value="${esc(s.name)}"></td>
         <td><input class="edit-input" id="e-shares" type="number" step="0.01" value="${s.shares}" min="0"></td>
         <td colspan="3" style="text-align:center;font-size:11px;color:var(--text3)">保存後に再計算</td>
         <td><input class="edit-input" id="e-buy" type="number" step="0.01" value="${s.buyPrice}" min="0"></td>
         <td><input class="edit-input" id="e-curprice" type="number" step="0.01" value="${s.currentPrice}" min="0"></td>
         <td colspan="2"><select class="edit-input" id="e-account" style="text-align:left">${['特定口座','NISA','一般口座'].map(a=>`<option value="${a}"${(s.account||'特定口座')===a?' selected':''}>${a}</option>`).join('')}</select></td>
         <td><input class="edit-input" id="e-div" type="number" step="0.01" value="${s.annualDividend}" min="0"></td>
-        <td colspan="2"><input class="edit-input" id="e-exdates" style="text-align:left" value="${(s.exDates||[]).join(',')}" placeholder="03-31,09-30"></td>
+        <td colspan="2"><input class="edit-input" id="e-exdates" style="text-align:left" value="${esc((s.exDates||[]).join(','))}" placeholder="03-31,09-30"></td>
         <td><div style="display:flex;gap:4px;justify-content:flex-end"><button class="save-btn" onclick="saveEdit(${s.id})">保存</button><button class="cancel-btn" onclick="cancelEdit()">×</button></div></td>
       </tr>`;
     }
     return`<tr>
-      <td style="min-width:130px;padding-left:1rem"><div class="tm">${s.ticker}${c.cur==='USD'?' <span class="tag-yoc">$</span>':''}</div><div class="ts">${s.name}${s.account?` <span class="badge badge-upcoming" style="font-size:9px">${s.account}</span>`:''}</div></td>
+      <td style="min-width:130px;padding-left:1rem"><div class="tm">${esc(s.ticker)}${c.cur==='USD'?' <span class="tag-yoc">$</span>':''}</div><div class="ts">${esc(s.name)}${s.account?` <span class="badge badge-upcoming" style="font-size:9px">${esc(s.account)}</span>`:''}</div></td>
       <td>${s.shares.toLocaleString()}<div class="ts">株</div></td>
       <td>${m(c.mv)}<div class="ts">時価</div></td>
       <td>${c.curYield.toFixed(2)}%<div class="ts">現在利回り</div></td>
@@ -428,7 +431,7 @@ function saveEdit(id){
   const accEl=document.getElementById('e-account');
   s.name=name;s.shares=shares;s.buyPrice=buyPrice;s.currentPrice=curPrice;s.annualDividend=annDiv;s.exDates=exDates;
   if(accEl)s.account=accEl.value;
-  editingId=null;save(SK,stocks);renderAll();showToast(`${s.name} を更新しました`);
+  editingId=null;save(SK,stocks);renderAll();showToast(`${esc(s.name)} を更新しました`);
 }
 
 function renderCalendar(){
@@ -441,7 +444,7 @@ function renderCalendar(){
   html+=active.map(mth=>{
     const mI=mth.items.reduce((a,s)=>a+toJPY(s.income,s.cur),0);
     const items=mth.items.map(s=>{const dt=new Date(today.getFullYear(),mth.m-1,s.day);const dl=Math.ceil((dt-today)/864e5);const soon=dl>=0&&dl<=30?`<span class="badge badge-soon" style="margin-left:6px">あと${dl}日</span>`:'';
-      return`<div class="cal-item"><div><div style="font-size:13px;font-weight:500">${s.ticker}　${s.name}${soon}</div><div style="font-size:11px;color:var(--text3)">${mth.m}/${s.day} 権利落ち</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:500">${fmtMoney(s.income,s.cur)}</div><div style="font-size:11px;color:var(--text3)">1株 ${fmtMoney(s.annualDividend/s.exDates.length,s.cur)}</div></div></div>`}).join('');
+      return`<div class="cal-item"><div><div style="font-size:13px;font-weight:500">${esc(s.ticker)}　${esc(s.name)}${soon}</div><div style="font-size:11px;color:var(--text3)">${mth.m}/${s.day} 権利落ち</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:500">${fmtMoney(s.income,s.cur)}</div><div style="font-size:11px;color:var(--text3)">1株 ${fmtMoney(s.annualDividend/s.exDates.length,s.cur)}</div></div></div>`}).join('');
     return`<div class="cal-month-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.85rem"><div style="font-weight:500;font-size:15px">${mth.m}月</div><div style="font-size:14px;font-weight:500;color:var(--text-info)">${fmtYen(mI)}</div></div>${items}</div>`}).join('');
   el.innerHTML=html;
 }
@@ -452,14 +455,13 @@ function renderAnalysis(){
   const calced=stocks.map(s=>({...s,...calcStock(s)}));
   const sR=[...calced].sort((a,b)=>b.totalPct-a.totalPct);
   const maxR=Math.max(...sR.map(s=>Math.abs(s.totalPct)),...sR.map(s=>Math.abs(s.capPct)),1);
-  const retBars=sR.map(s=>`<div class="bar-row"><div class="bar-ticker">${s.name}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><div class="bar-track"><div class="bar-fill" style="width:${Math.abs(s.totalPct)/maxR*100}%;background:${s.totalPct>=0?'#1d9e75':'#e24b4a'}"></div></div><div class="bar-val ${s.totalPct>=0?'pos':'neg'}">${fmtPct(s.totalPct)}</div></div><div style="display:flex;align-items:center;gap:6px"><div class="bar-track"><div class="bar-fill" style="width:${Math.abs(s.capPct)/maxR*100}%;background:#b4b2a9"></div></div><div class="bar-val" style="color:var(--text3);font-weight:400">${fmtPct(s.capPct)}</div></div></div></div>`).join('');
+  const retBars=sR.map(s=>`<div class="bar-row"><div class="bar-ticker">${esc(s.name)}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><div class="bar-track"><div class="bar-fill" style="width:${Math.abs(s.totalPct)/maxR*100}%;background:${s.totalPct>=0?'#1d9e75':'#e24b4a'}"></div></div><div class="bar-val ${s.totalPct>=0?'pos':'neg'}">${fmtPct(s.totalPct)}</div></div><div style="display:flex;align-items:center;gap:6px"><div class="bar-track"><div class="bar-fill" style="width:${Math.abs(s.capPct)/maxR*100}%;background:#b4b2a9"></div></div><div class="bar-val" style="color:var(--text3);font-weight:400">${fmtPct(s.capPct)}</div></div></div></div>`).join('');
   const sY=[...calced].sort((a,b)=>b.yocPct-a.yocPct);
   const maxY=Math.max(...sY.map(s=>s.yocPct),1);
-  const yocBars=sY.map(s=>`<div class="bar-row"><div class="bar-ticker">${s.name}</div><div class="bar-track"><div class="bar-fill" style="width:${s.yocPct/maxY*100}%;background:#185fa5"></div></div><div class="bar-val" style="color:var(--text-info)">${s.yocPct.toFixed(2)}%</div></div>`).join('');
+  const yocBars=sY.map(s=>`<div class="bar-row"><div class="bar-ticker">${esc(s.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${s.yocPct/maxY*100}%;background:#185fa5"></div></div><div class="bar-val" style="color:var(--text-info)">${s.yocPct.toFixed(2)}%</div></div>`).join('');
   const divData=calced.filter(s=>s.annualIncome>0).map(s=>({label:s.name,value:toJPY(s.annualIncome,s.cur)})).sort((a,b)=>b.value-a.value);
   const mvData=calced.filter(s=>s.mv>0).map(s=>({label:s.name,value:toJPY(s.mv,s.cur)})).sort((a,b)=>b.value-a.value);
-  const accMap={};calced.forEach(s=>{const a=s.account||'未設定';accMap[a]=(accMap[a]||0)+toJPY(s.mv,s.cur)});
-  const accData=Object.entries(accMap).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value);
+
   el.innerHTML=`
     <div class="card"><div class="sl">配当込み実質リターン vs 株価のみリターン</div>
       <div class="legend-row"><div class="legend-item"><div class="legend-dot" style="background:#1d9e75"></div>配当込み実質リターン ★</div><div class="legend-item"><div class="legend-dot" style="background:#b4b2a9"></div>株価のみリターン</div></div>
@@ -469,7 +471,6 @@ function renderAnalysis(){
       <div class="pie-container">
         <div class="pie-wrap"><div style="font-size:13px;font-weight:500;margin-bottom:.75rem;text-align:center">年間配当の銘柄別割合</div>${pieChart(divData)}<div class="pie-legend">${pieLegend(divData)}</div></div>
         <div class="pie-wrap"><div style="font-size:13px;font-weight:500;margin-bottom:.75rem;text-align:center">保有資産の銘柄別割合</div>${pieChart(mvData)}<div class="pie-legend">${pieLegend(mvData)}</div></div>
-        <div class="pie-wrap"><div style="font-size:13px;font-weight:500;margin-bottom:.75rem;text-align:center">口座区分別の資産割合</div>${pieChart(accData)}<div class="pie-legend">${pieLegend(accData)}</div></div>
       </div></div>`;
 }
 
@@ -483,7 +484,7 @@ function renderHistory(){
   const histItems=[...hist].sort((a,b)=>b.date.localeCompare(a.date)).map(h=>{
     const soldTag=heldTickers.has(h.ticker)?'':' <span class="badge badge-normal">売却済み</span>';
     const hc=h.currency||'JPY';
-    return`<div class="hist-item"><div><div style="font-size:13px;font-weight:500">${h.ticker}　${h.stockName}${soldTag}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${h.date}　${h.memo||''}</div></div><div style="display:flex;align-items:center;gap:8px"><div style="font-size:14px;font-weight:500;color:var(--green)">${fmtMoney(h.amount,hc)}</div><button class="del-btn" onclick="deleteHistory('${h.id}')">×</button></div></div>`}).join('')||'<div class="empty-state">配当の受取記録がありません。</div>';
+    return`<div class="hist-item"><div><div style="font-size:13px;font-weight:500">${esc(h.ticker)}　${esc(h.stockName)}${soldTag}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${h.date}　${esc(h.memo||'')}</div></div><div style="display:flex;align-items:center;gap:8px"><div style="font-size:14px;font-weight:500;color:var(--green)">${fmtMoney(h.amount,hc)}</div><button class="del-btn" onclick="deleteHistory('${esc(h.id)}')">×</button></div></div>`}).join('')||'<div class="empty-state">配当の受取記録がありません。</div>';
   // 年別推移グラフ用データ（古い年→新しい年）
   const trendYears=Object.entries(byYear).sort((a,b)=>a[0].localeCompare(b[0]));
   const maxYearAmt=Math.max(...trendYears.map(([,v])=>v),1);
@@ -503,7 +504,7 @@ function renderHistory(){
     ${trendBars?`<div class="card"><div class="sl">年別配当推移（前年比つき）</div><div class="bar-list">${trendBars}</div><p class="footnote" style="margin-top:.75rem">受取履歴から自動集計。▲▼は前年比の増減率です。</p></div>`:''}
     <div class="card"><div class="sl">配当を記録する</div>
       <div class="form-grid">
-        <div class="form-group"><label class="form-label">銘柄 *</label><select id="h-ticker" onchange="toggleOtherInput()"><option value="">選択</option>${stocks.map(s=>`<option value="${s.ticker}|${s.name}">${s.ticker} ${s.name}</option>`).join('')}<option value="__other__">その他（売却済み等）</option></select></div>
+        <div class="form-group"><label class="form-label">銘柄 *</label><select id="h-ticker" onchange="toggleOtherInput()"><option value="">選択</option>${stocks.map(s=>`<option value="${esc(s.ticker)}|${esc(s.name)}">${esc(s.ticker)} ${esc(s.name)}</option>`).join('')}<option value="__other__">その他（売却済み等）</option></select></div>
         <div class="form-group" id="other-name-group" style="display:none"><label class="form-label">銘柄名（自由入力）*</label><input id="h-other-name" placeholder="例: 9433 KDDI（売却済）"></div>
         <div class="form-group"><label class="form-label">受取日 *</label><input id="h-date" type="date" value="${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}"></div>
         <div class="form-group"><label class="form-label">受取金額（税引後）*</label><input id="h-amount" type="number" step="0.01" placeholder="例: 15000" min="0"></div>
@@ -515,7 +516,7 @@ function renderHistory(){
     <div class="card"><div class="sl">受取履歴</div>${histItems}</div>`;
 }
 function toggleOtherInput(){const v=document.getElementById('h-ticker').value;document.getElementById('other-name-group').style.display=v==='__other__'?'flex':'none'}
-function topStock(){if(!hist.length)return'—';const rate=getRate();const bt={};hist.forEach(h=>{bt[h.ticker]=(bt[h.ticker]||0)+((h.currency||'JPY')==='USD'?h.amount*rate:h.amount)});const top=Object.entries(bt).sort((a,b)=>b[1]-a[1])[0];return top?`${top[0]} ${fmtYen(top[1])}`:'—'}
+function topStock(){if(!hist.length)return'—';const rate=getRate();const bt={};hist.forEach(h=>{bt[h.ticker]=(bt[h.ticker]||0)+((h.currency||'JPY')==='USD'?h.amount*rate:h.amount)});const top=Object.entries(bt).sort((a,b)=>b[1]-a[1])[0];return top?`${esc(top[0])} ${fmtYen(top[1])}`:'—'}
 function addHistory(){
   const tv=document.getElementById('h-ticker').value,date=document.getElementById('h-date').value;
   const amount=parseFloat(document.getElementById('h-amount').value)||0,memo=document.getElementById('h-memo').value.trim();
@@ -534,7 +535,7 @@ function deleteHistory(id){if(!confirm('削除してよいですか？'))return;
 
 function renderAdd(){
   const el=document.getElementById('pane-add');
-  const list=stocks.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:.5px solid var(--border)"><div><span style="font-weight:500">${s.ticker}</span><span style="color:var(--text2);font-size:13px;margin-left:8px">${s.name}</span><span style="color:var(--text3);font-size:12px;margin-left:8px">${s.shares}株</span></div><button class="del-btn" onclick="deleteStock(${s.id})">× 削除</button></div>`).join('')||'<div style="font-size:13px;color:var(--text3);padding:.75rem 0">まだ銘柄がありません</div>';
+  const list=stocks.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:.5px solid var(--border)"><div><span style="font-weight:500">${esc(s.ticker)}</span><span style="color:var(--text2);font-size:13px;margin-left:8px">${esc(s.name)}</span><span style="color:var(--text3);font-size:12px;margin-left:8px">${s.shares}株</span></div><button class="del-btn" onclick="deleteStock(${s.id})">× 削除</button></div>`).join('')||'<div style="font-size:13px;color:var(--text3);padding:.75rem 0">まだ銘柄がありません</div>';
   el.innerHTML=`
     <div class="card"><div class="sl">新規銘柄を追加</div>
       <div class="form-grid">
@@ -571,7 +572,7 @@ function addStock(){
 function deleteStock(id){
   const s=stocks.find(s=>s.id===id);if(!s)return;
   const rcv=getReceivedDiv(s.ticker,curOf(s));
-  const msg=rcv>0?`「${s.name}」を削除しますか？\n※受取済み配当 ${fmtMoney(rcv,curOf(s))} の履歴は残り、総受取額に含まれ続けます。`:`「${s.name}」を削除しますか？`;
+  const msg=rcv>0?`「${esc(s.name)}」を削除しますか？\n※受取済み配当 ${fmtMoney(rcv,curOf(s))} の履歴は残り、総受取額に含まれ続けます。`:`「${esc(s.name)}」を削除しますか？`;
   if(!confirm(msg))return;
   stocks=stocks.filter(s=>s.id!==id);save(SK,stocks);renderAll();
 }
@@ -682,7 +683,10 @@ function importData(event){
   reader.onload=e=>{
     try{
       const data=JSON.parse(e.target.result);
-      if(data.app!=='dividend-portfolio'||!Array.isArray(data.stocks)){alert('このファイルは配当ポートフォリオのバックアップではないようです');return}
+      if(data.app!=='dividend-portfolio'||!Array.isArray(data.stocks)){alert('このファイルはバックアップファイルではないようです');return}
+      // 復元データの型を検証（不正なデータの混入を防ぐ）
+      data.stocks=data.stocks.filter(s=>s&&typeof s.ticker==='string'&&typeof s.name==='string'&&isFinite(s.shares)&&isFinite(s.buyPrice)&&isFinite(s.currentPrice)).map(s=>({id:s.id||Date.now()+Math.random(),ticker:String(s.ticker).slice(0,20),name:String(s.name).slice(0,50),shares:Number(s.shares),buyPrice:Number(s.buyPrice),currentPrice:Number(s.currentPrice),annualDividend:Number(s.annualDividend)||0,exDates:Array.isArray(s.exDates)?s.exDates.filter(d=>/^\d{2}-\d{2}$/.test(d)):[],account:['特定口座','NISA','一般口座'].includes(s.account)?s.account:undefined,currency:s.currency==='USD'?'USD':undefined}));
+      data.hist=(Array.isArray(data.hist)?data.hist:[]).filter(h=>h&&typeof h.ticker==='string'&&typeof h.date==='string'&&isFinite(h.amount)).map(h=>({id:String(h.id||Date.now()+Math.random()),ticker:String(h.ticker).slice(0,20),stockName:String(h.stockName||h.ticker).slice(0,50),date:String(h.date).slice(0,10),amount:Number(h.amount),memo:String(h.memo||'').slice(0,100),currency:h.currency==='USD'?'USD':undefined}));
       if(!confirm(`バックアップから復元しますか？\n（銘柄${data.stocks.length}件・配当履歴${(data.hist||[]).length}件）\n※現在のデータは上書きされます`))return;
       stocks=data.stocks;hist=data.hist||[];
       save(SK,stocks);save(HK,hist);
